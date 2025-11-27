@@ -20,13 +20,29 @@ const fs = require('fs');
 const path = require('path');
 
 // 配置
-const ASSETS_DIR = path.resolve(__dirname, '../app/src/main/assets');
+const SCRIPT_DIR = __dirname;
+const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
+const ASSETS_DIR = path.join(PROJECT_ROOT, 'app', 'src', 'main', 'assets');
 const REQUIRED_FILES = ['index.html'];
+
+/**
+ * 验证目标目录是否在项目内
+ */
+function isPathSafe(targetPath) {
+    const normalizedTarget = path.normalize(path.resolve(targetPath));
+    const normalizedProject = path.normalize(PROJECT_ROOT);
+    return normalizedTarget.startsWith(normalizedProject);
+}
 
 /**
  * 递归删除目录内容 (保留目录本身)
  */
 function cleanDirectory(dir, keepFiles = []) {
+    // 安全检查：确保目录在项目范围内
+    if (!isPathSafe(dir)) {
+        throw new Error(`安全错误: 目标目录超出项目范围: ${dir}`);
+    }
+    
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
         return;
@@ -37,10 +53,52 @@ function cleanDirectory(dir, keepFiles = []) {
         if (keepFiles.includes(item)) continue;
         
         const itemPath = path.join(dir, item);
-        const stat = fs.statSync(itemPath);
         
-        if (stat.isDirectory()) {
-            fs.rmSync(itemPath, { recursive: true, force: true });
+        // 再次验证路径安全性
+        if (!isPathSafe(itemPath)) {
+            console.warn(`跳过不安全路径: ${itemPath}`);
+            continue;
+        }
+        
+        const stat = fs.lstatSync(itemPath);
+        
+        // 不跟踪符号链接，直接删除
+        if (stat.isSymbolicLink()) {
+            fs.unlinkSync(itemPath);
+        } else if (stat.isDirectory()) {
+            // 递归删除目录
+            cleanDirectoryRecursive(itemPath);
+            fs.rmdirSync(itemPath);
+        } else {
+            fs.unlinkSync(itemPath);
+        }
+    }
+}
+
+/**
+ * 递归清理目录内容
+ */
+function cleanDirectoryRecursive(dir) {
+    if (!isPathSafe(dir)) {
+        throw new Error(`安全错误: 路径超出项目范围: ${dir}`);
+    }
+    
+    const items = fs.readdirSync(dir);
+    for (const item of items) {
+        const itemPath = path.join(dir, item);
+        
+        if (!isPathSafe(itemPath)) {
+            console.warn(`跳过不安全路径: ${itemPath}`);
+            continue;
+        }
+        
+        const stat = fs.lstatSync(itemPath);
+        
+        if (stat.isSymbolicLink()) {
+            fs.unlinkSync(itemPath);
+        } else if (stat.isDirectory()) {
+            cleanDirectoryRecursive(itemPath);
+            fs.rmdirSync(itemPath);
         } else {
             fs.unlinkSync(itemPath);
         }

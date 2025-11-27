@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 
 /**
@@ -30,6 +31,9 @@ class MainActivity : AppCompatActivity() {
         
         // 配置 WebView
         setupWebView()
+        
+        // 设置返回键处理
+        setupBackPressedHandler()
         
         // 加载页面
         loadPage()
@@ -57,8 +61,23 @@ class MainActivity : AppCompatActivity() {
         // 添加 JavaScript 接口
         webView.addJavascriptInterface(jsBridge, "AndroidBridge")
         
-        // 启用调试（chrome://inspect）
-        WebView.setWebContentsDebuggingEnabled(true)
+        // 仅在调试模式下启用 WebView 调试（chrome://inspect）
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+    }
+
+    private fun setupBackPressedHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
 
     private fun loadPage() {
@@ -68,14 +87,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             // 生产模式：加载本地 assets
             webView.loadUrl("file:///android_asset/index.html")
-        }
-    }
-
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
         }
     }
 

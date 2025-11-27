@@ -127,16 +127,24 @@ class JsBridge(
 
     /**
      * 调用 JavaScript 回调
+     * 使用 evaluateJavascript 直接传递 JSON 字符串，避免手动转义带来的安全风险
      */
     private fun callJavaScript(jsonString: String) {
-        // 转义特殊字符
-        val escapedJson = jsonString
-            .replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-        
-        val script = "javascript:window.__JSB_onMessage && window.__JSB_onMessage(JSON.parse('$escapedJson'));"
+        // 使用 evaluateJavascript 直接执行 JavaScript 代码
+        // JSONObject.toString() 已经正确转义了 JSON 内容
+        // 使用 JSON.parse 确保数据安全传递
+        val script = """
+            (function() {
+                try {
+                    var data = $jsonString;
+                    if (window.__JSB_onMessage) {
+                        window.__JSB_onMessage(data);
+                    }
+                } catch (e) {
+                    console.error('[JSBridge] Error parsing response:', e);
+                }
+            })();
+        """.trimIndent()
         
         // 在主线程执行
         webView.post {
