@@ -7,6 +7,13 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import org.json.JSONException
 import org.json.JSONObject
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
+import android.webkit.MimeTypeMap
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Base64
 
 /**
  * JsBridge - JavaScript 与 Native 通信桥接
@@ -66,6 +73,7 @@ class JsBridge(
             "echo" -> handleEcho(id, params)
             "getUserToken" -> handleGetUserToken(id)
             "setUserToken" -> handleSetUserToken(id, params)
+            "downloadFile" -> handleDownloadFile(id, params)
             else -> sendError(id, ERROR_METHOD_NOT_FOUND, "Method not found: $method")
         }
     }
@@ -130,6 +138,88 @@ class JsBridge(
             sendResult(id, JSONObject.NULL) // 返回null表示成功
         } catch (e: Exception) {
             sendError(id, ERROR_INTERNAL_ERROR, "Failed to set user token: ${e.message}")
+        }
+    }
+
+    /**
+     * 下载文件
+     */
+    private fun handleDownloadFile(id: Any, params: Any?) {
+        try {
+            if (params == null || params !is JSONObject) {
+                sendError(id, ERROR_INVALID_PARAMS, "Invalid download parameters")
+                return
+            }
+
+            val base64Data = params.optString("base64Data")
+            val fileName = params.optString("fileName", "download")
+
+            if (base64Data.isEmpty()) {
+                sendError(id, ERROR_INVALID_PARAMS, "Base64 data is required")
+                return
+            }
+
+            // 解析Base64数据
+            val parts = base64Data.split(",")
+            if (parts.size != 2) {
+                sendError(id, ERROR_INVALID_PARAMS, "Invalid base64 format")
+                return
+            }
+
+            val mimeType = parts[0].split(":")[1].split(";")[0]
+            val base64String = parts[1]
+
+            // 解码Base64
+            val decodedBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                java.util.Base64.getDecoder().decode(base64String)
+            } else {
+                android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+            }
+
+            // 创建临时文件
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(downloadsDir, fileName)
+
+            // 确保文件名唯一
+            var counter = 1
+            val nameWithoutExt = fileName.substringBeforeLast(".")
+            val extension = fileName.substringAfterLast(".", "")
+            var uniqueFile = file
+
+            while (uniqueFile.exists()) {
+                val newName = if (extension.isNotEmpty()) {
+                    "$nameWithoutExt($counter).$extension"
+                } else {
+                    "$nameWithoutExt($counter)"
+                }
+                uniqueFile = File(downloadsDir, newName)
+                counter++
+            }
+
+            // 写入文件
+            FileOutputStream(uniqueFile).use { fos ->
+                fos.write(decodedBytes)
+            }
+
+            // 使用DownloadManager通知系统
+            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadManager.addCompletedDownload(
+                uniqueFile.name,
+                "Downloaded from Chat App",
+                true,
+                mimeType,
+                uniqueFile.absolutePath,
+                uniqueFile.length(),
+                true
+            )
+
+            sendResult(id, JSONObject().apply {
+                put("filePath", uniqueFile.absolutePath)
+                put("fileName", uniqueFile.name)
+            })
+
+        } catch (e: Exception) {
+            sendError(id, ERROR_INTERNAL_ERROR, "Failed to download file: ${e.message}")
         }
     }
 

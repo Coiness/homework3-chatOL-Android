@@ -2,7 +2,10 @@ package com.example.hybridandroid
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
@@ -19,6 +22,10 @@ import android.content.ActivityNotFoundException
  * 生产模式: 加载 file:///android_asset/index.html
  */
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     private lateinit var webView: WebView
     private lateinit var jsBridge: JsBridge
@@ -70,7 +77,22 @@ class MainActivity : AppCompatActivity() {
         }
         
         // 设置 WebViewClient
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                Log.d(TAG, "页面开始加载: $url")
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                Log.d(TAG, "页面加载完成: $url")
+            }
+
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                super.onReceivedError(view, request, error)
+                Log.e(TAG, "页面加载错误: ${error?.description} for URL: ${request?.url}")
+            }
+        }
         
         // 设置 WebChromeClient（用于 console.log 等）
         webView.webChromeClient = object : WebChromeClient() {
