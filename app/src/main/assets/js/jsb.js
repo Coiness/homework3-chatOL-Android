@@ -6,6 +6,9 @@
  * 成功响应: { id: number, result: any }
  * 错误响应: { id: number, error: { code: number, message: string } }
  */
+
+// 用括号括起来，立即调用。同时，避免污染全局变量。
+// 匿名函数，没有名字，把当前的全局对象作为global传给函数，定义完立即执行
 (function(global) {
     'use strict';
     
@@ -22,6 +25,8 @@
      * JSBridge 对象
      */
     var JSBridge = {
+
+        // 核心层，负责设置超时器、把对象转换为JSON字符串、真正调用安卓底层
         /**
          * 调用 Native 方法
          * @param {string} method - 方法名
@@ -83,6 +88,8 @@
             });
         },
         
+
+        // 业务层 封装常用方法
         /**
          * 获取设备信息 (便捷方法)
          * @returns {Promise}
@@ -100,6 +107,7 @@
             return this.call('echo', data);
         },
         
+        // 工具层
         /**
          * 检查 JSBridge 是否可用
          * @returns {boolean}
@@ -122,12 +130,16 @@
      * 由 Android 端调用: window.__JSB_onMessage({ id, result } | { id, error })
      * @param {Object} response - 响应对象
      */
+    // Native对Web请求的回复
     global.__JSB_onMessage = function(response) {
+
+        // 回复无效
         if (!response || typeof response.id === 'undefined') {
             console.warn('[JSBridge] Invalid response:', response);
             return;
         }
         
+        // 回调无效
         var callback = pendingCallbacks[response.id];
         if (!callback) {
             console.warn('[JSBridge] No callback found for id:', response.id);
@@ -157,3 +169,18 @@
     console.log('[JSBridge] Initialized, available:', JSBridge.isAvailable());
     
 })(typeof window !== 'undefined' ? window : this);
+
+/**
+ * 流程
+ * 1. Web 发起Request
+ * 2. Web 调用 call 方法
+ * 3. call方法，生成请求id、设置超时、存储回调、构建请求消息并发送给Native
+ * 4. call方法返回的是Promise，所以Web异步执行，干其他事去了
+ * 5. Android 收到消息，处理消息，返回结果
+ * 6. Android 端调用: window.__JSB_onMessage({ id, result } | { id, error }) 返回消息
+ * 7. Web 端的 __JSB_onMessage接受到 response：{id，result} | {id,error}
+ * 8. 根据 response 内部的id，查找回调，清理回调超时定时器，根据reslut/error来reslove/reject上面的Promise（call返回的那个）
+ * 9. 由于这个是异步，所以web可以await收到消息，拿到数据/报错
+ */
+
+

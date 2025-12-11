@@ -7,6 +7,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import android.net.Uri
+import android.webkit.ValueCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ActivityNotFoundException
 
 /**
  * MainActivity - WebView 宿主
@@ -18,6 +22,19 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var jsBridge: JsBridge
+    
+    // 用于处理文件上传的回调
+    private var uploadMessage: ValueCallback<Array<Uri>>? = null
+
+    // 注册文件选择器
+    private val fileChooserLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            uploadMessage?.onReceiveValue(arrayOf(uri))
+        } else {
+            uploadMessage?.onReceiveValue(null)
+        }
+        uploadMessage = null
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +73,39 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = WebViewClient()
         
         // 设置 WebChromeClient（用于 console.log 等）
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                // 取消之前的回调
+                if (uploadMessage != null) {
+                    uploadMessage?.onReceiveValue(null)
+                    uploadMessage = null
+                }
+
+                uploadMessage = filePathCallback
+
+                try {
+                    // 获取网页请求的文件类型
+                    var mimeType = "*/*"
+                    if (fileChooserParams != null && fileChooserParams.acceptTypes.isNotEmpty()) {
+                        val acceptType = fileChooserParams.acceptTypes[0]
+                        if (acceptType.isNotEmpty()) {
+                            mimeType = acceptType
+                        }
+                    }
+                    
+                    // 启动文件选择器
+                    fileChooserLauncher.launch(mimeType)
+                } catch (e: ActivityNotFoundException) {
+                    uploadMessage = null
+                    return false
+                }
+                return true
+            }
+        }
         
         // 添加 JavaScript 接口
         webView.addJavascriptInterface(jsBridge, "AndroidBridge")

@@ -1,6 +1,7 @@
 package com.example.hybridandroid
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -21,6 +22,8 @@ class JsBridge(
 ) {
     companion object {
         private const val TAG = "JsBridge"
+        private const val PREF_NAME = "jsbridge_prefs"
+        private const val KEY_USER_TOKEN = "user_token"
         
         // 错误码
         private const val ERROR_METHOD_NOT_FOUND = -32601
@@ -28,6 +31,8 @@ class JsBridge(
         private const val ERROR_INTERNAL_ERROR = -32603
         private const val ERROR_PARSE_ERROR = -32700
     }
+
+    private val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     /**
      * JavaScript 调用此方法发送消息
@@ -59,6 +64,8 @@ class JsBridge(
         when (method) {
             "getDeviceInfo" -> handleGetDeviceInfo(id)
             "echo" -> handleEcho(id, params)
+            "getUserToken" -> handleGetUserToken(id)
+            "setUserToken" -> handleSetUserToken(id, params)
             else -> sendError(id, ERROR_METHOD_NOT_FOUND, "Method not found: $method")
         }
     }
@@ -88,6 +95,42 @@ class JsBridge(
      */
     private fun handleEcho(id: Any, params: Any?) {
         sendResult(id, params ?: JSONObject.NULL)
+    }
+
+    /**
+     * 获取用户token
+     */
+    private fun handleGetUserToken(id: Any) {
+        try {
+            val token = sharedPreferences.getString(KEY_USER_TOKEN, null)
+            sendResult(id, token ?: JSONObject.NULL)
+        } catch (e: Exception) {
+            sendError(id, ERROR_INTERNAL_ERROR, "Failed to get user token: ${e.message}")
+        }
+    }
+
+    /**
+     * 设置用户token
+     */
+    private fun handleSetUserToken(id: Any, params: Any?) {
+        try {
+            if (params == null || params == JSONObject.NULL) {
+                sendError(id, ERROR_INVALID_PARAMS, "Token parameter is required")
+                return
+            }
+            
+            val token = params.toString()
+            // 允许空字符串，表示清除 token
+            if (token.isEmpty()) {
+                sharedPreferences.edit().remove(KEY_USER_TOKEN).apply()
+            } else {
+                sharedPreferences.edit().putString(KEY_USER_TOKEN, token).apply()
+            }
+            
+            sendResult(id, JSONObject.NULL) // 返回null表示成功
+        } catch (e: Exception) {
+            sendError(id, ERROR_INTERNAL_ERROR, "Failed to set user token: ${e.message}")
+        }
     }
 
     /**
